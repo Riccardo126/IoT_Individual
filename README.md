@@ -16,9 +16,9 @@ The requirements needed to solve the assignment are:
 - Transmit the result to the cloud server via LoRaWAN + TTN
 
 ### Input Signal
-<img src="images\photo1.jpg" width="250">
-<img src="images\photo3.jpg" width="250">
-<img src="images\photo2.jpg" width="250">
+<img src="images/photo1.jpg" width="250">
+<img src="images/photo3.jpg" width="250">
+<img src="images/photo2.jpg" width="250">
 
 After failing multiple times at generating a signal through audio cable or with DAC and losing a lot of precious time, I resorted to simulating the input signal with the firmware of my Heltec board.
 In exchange I will do more precise tests on it.
@@ -42,8 +42,9 @@ In my case i generated the signal internally so i wanted to test the hardware li
 2) Initialize list of frequencies (chosen manually to avoid a very long test)
 3) Select starting sample frequency
 4) Sample at that frequency for 5 seconds tracking errors
-5) If you got no issues select next frequency and go back to point 3
-6) Print out last valid frequency
+For each interval, compares actual vs expected samples over 5 seconds. If unstable (>2% deviation) skips to next shorter interval immediately, if stable moves to the next interval only after 2 consecutive stable periods with no improvement.
+5) If got no issues select next frequency and go back to point 3
+6) Record last valid frequency
 
 To see the test in action turn the variable ENABLE_STRESS_TEST to true.
 The result you get in the end should be like the one you see below, that is the actual result I got from the test.
@@ -68,17 +69,15 @@ As FFT_SIZE I chose 512 because its the right amount to detect 1Hz resolution si
 So to calculate the optimal sampling frequency:
 
 1) Pull 512 samples of the precalculated signal
-2) Applu a Hamming windowing to reduce artifacts
-3) Use FFT to convert time samples to frequency samples
-4) Find and extract the peak frequency component
-5) Use Nyquist theorem to find optimal sampling frequency Fs = 2 × f_max
-6) Set SAMPLE_RATE and SAMPLE_INTERVAL_US
-7) Print optimal sampling frequency obtained
+2) Use FFT to convert time samples to frequency samples
+3) Find and extract the peak frequency component
+4) Use Nyquist theorem to find optimal sampling frequency Fs = 2 × f_max
+5) Set SAMPLE_RATE and SAMPLE_INTERVAL_US
+6) Print optimal sampling frequency obtained
 
 Results obtained with signal1:
 ```
 === FFT ANALYSIS ===
->FFT Sampling Rate: 512.00 Hz
 >FFT Peak Frequency: 5.00 Hz
 >Optimal Sampling Frequency: 10.00 Hz
 >Sampling Interval: 100000 µs
@@ -90,7 +89,7 @@ To compute the aggregate function over a window we simulate sampling our generat
 
 I had some issues doing this because the signal would get misaligned to the period and the average was oscillating around the 0 never being actually 0. I solved this forcing the windows to be aligned on the phase wrap.
 
-![Average visualization](images\average.png)
+![Average visualization](images/average.png)
 
 ### Communicate the aggregate value to the nearby server with MQTT
 1. **Set up Moquitto**
@@ -125,11 +124,16 @@ The main task sends the aggregated values on the queue and the lora task detects
 
 ## Performance of the system
 
-### Measure per-window execution time
-
-
 ### Measure volume of data transmitted
+MQTT
+Payload: ~13 bytes per message (e.g., "123.456789")
+Transmission rate: Every 100ms
+Volume: ~130 bytes/second or ~468 KB/hour
 
+LoRa
+Payload: Single uint8_t = 1 byte per message
+Transmission rate: Every 10 seconds
+Volume: ~0.1 bytes/second or ~360 bytes/hour
 
 ### Measure Latency
 To measure latency of communication simply watch the latency printed when sending messages with mqtt.
@@ -138,28 +142,14 @@ When an ACK is received on iot/ack, the latency is calculated as the difference 
 
 To send the ACK use `node tools/MQTTserver/edge_server.js` and see the plotted values on Teleplot.
 
-![Latency](images\latency.png)
+![Latency](images/latency.png)
 
 From here we can see the latency goes from 0.4ms to 0.8ms, but this depends on the type of connection is being used.
 
 ### Energy Consumption
 The circuit for measuring the energy uses this schema:
 
-'''
-USB Power (5V)
-    ↓
-INA219 Sensor
-    ├─→ SDA → GPIO8 of ESP32-C3
-    ├─→ SCL → GPIO9 of ESP32-C3
-    └─→ +5V output → Heltec 5V
-        ↓
-    GND → common to all devices INA219 IN+ (measurement point)
-
-ESP32-C3 (Controller):
-    - Reads INA219 via I2C
-    - Outputs CSV data @ 115200 baud
-    - Plots to serial monitor
-'''
+![energy](images/energy.jpg)
 
 Depending on the tasks the board has to do, it has different consumptions. I will analyze here the behaviour where the device:
 - generates the signal
@@ -168,7 +158,7 @@ Depending on the tasks the board has to do, it has different consumptions. I wil
 
 The FreeRTOS tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless or LoRa transceiver is only enabled during transmission.
 
-![Energy](images\current.png)
+![Energy](images/current.png)
 
 Here we have a plot of the current usage during normal operation without any data sending.
 
@@ -184,11 +174,14 @@ The duration of each LoRa transmission (time-on-air) is calculated based on the 
 
 We can then estimate the time using the [TTN LoRaWAN airtime calculator](https://www.thethingsnetwork.org/airtime-calculator/).
 
-![TTA](images\tta.png)
+![TTA](images/tta.png)
+
+So about the Duty Cycle of the LoRa modulewe can say that the radio is active for less than 1% of the time (92.7 ms / 10 s ≈ 0.93%) and the time occupied is well below the EU868 limits.
 
 Given the behaviour described above we can estimate the power consumption during the LoRa transmission.
 
-![lora_consumption](images\estimated_consumption.png)
+![lora_consumption](images/estimated_consumption.png)
+ But such consumption is only for a little fraction of each 10s period, so the overall consumption is negligible.
 
 #### Consumption with WiFi
 The device remains in WiFi connection state continuously but sends data only every 5 seconds.
