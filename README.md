@@ -61,7 +61,7 @@ The values found were:
 ```
 
 ### Identify optimal sampling frequency
-The ArduinoFFT library breaks the signal into frequency bins, each bin represents a frequency range, and its magnitude shows how strong that frequency is in the signal.
+The ArduinoFFT library breaks the signal into frequency bins, each bin represents a frequency range, and its magnitude shows how strong that frequency is in the signal.  
 I chose 512 samples for frequency resolution. The FFT divides sampling rate by the number of samples to calculate bin spacing: Sampling Rate ÷ Number of Samples.
 
 The precalculated lookup table contains 10,000 signal samples representing one full second. Each sample is 100 microseconds apart, effectively creating a 10 kHz "virtual sampling" of the signal.
@@ -128,18 +128,18 @@ The main task sends the aggregated values on the queue and the lora task detects
 
 ### Measure volume of data transmitted
 MQTT
-Payload: 13 (payload) + 11 (topic) + 5 (MQTT header) + 54 (network overhead) ≈ 83 bytes/message
+Payload: 13 (payload) + 11 (topic) + 5 (MQTT header) + 54 (network overhead) ≈ 83 bytes/message  
 Transmission rate: Every 100ms  
 Volume: ~830 bytes/second  
 
 LoRa
-Payload: 1 byte (message) + 13 (LoRa Header)
+Payload: 1 byte (message) + 13 (LoRa Header)  
 Transmission rate: Every 10 seconds  
-Volume: 1.4 bytes/second ≈ 5 KB/hour
+Volume: 1.4 bytes/second ≈ 5 KB/hour  
 
 ### Measure Latency
-To measure latency of communication simply watch the latency printed when sending messages with mqtt.
-When a message is published to iot/average, the current time is recorded.
+To measure latency of communication simply watch the latency printed when sending messages with mqtt.  
+When a message is published to iot/average, the current time is recorded.  
 When an ACK is received on iot/ack, the latency is calculated as the difference between current time and send time, then printed out on serial.
 
 To send the ACK use `node tools/MQTTserver/edge_server.js` and see the plotted values on Teleplot.
@@ -166,7 +166,7 @@ Here we have a plot of the current usage during normal operation without any dat
 
 
 #### Consumption of LoRa
-Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average. This triggers a short spike in power usage, reaching at most 120 mA during transmission.
+Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average. This triggers a short spike in power usage, reaching at most 120 mA during transmission.  
 The duration of each LoRa transmission (time-on-air) is calculated based on the LoRaWAN physical layer settings, i set the datarate to 4 obtaining the following parameters:
 
 **Datarate 4 in EU868 region:**
@@ -186,7 +186,7 @@ Given the behaviour described above we can estimate the power consumption during
  But such consumption is only for a little fraction of each 10s period, so the overall consumption is negligible.
 
 #### Consumption with WiFi
-The device remains in WiFi connection state continuously but sends data only every 5 seconds.
+The device remains in WiFi connection state continuously but sends data only every 5 seconds.  
 So we have 2 behavious:
 * Wifi Idle: with average consumption ~70 mA
 * Wifi Transmission: with consumption ~160 mA every 0.1 second, so it almost stays at 160 everytime
@@ -217,16 +217,16 @@ const SignalComponent signal3[] = {
 ```
 
 ## About LLMs
-LLMs are good tools to research and find informations on tools and methods to solve the problems.
-But in the current state they still need guidance to solve the tasks.
-During the first phase I asked my LLM of choice, that was Gemini 3 Pro, to clarify the task and it was of good use, but when it came to solving the actual task it failed to provide functioning code. Messing with non-existing libraries, trying out unefficient methods and writing a lot of unuseful code were just some of the problems I faced.
-For the code I switched to Claude Haiku 4.5 and it proved more efficient with both code and questions on the code, but the issues were basically the same as Gemini's.
-I used them to first clarify what was the task and the various methods to solve them, then I investigated what was the most efficient and made the LLM implement it. I checked everything the LLM wrote, fixing all the mistakes, manually replacing code where it was using strange looking function, and checking after every prompt if the code was working well and doing what it was supposed to do.
-One notable example was the LoRa communication, that the LLM were very confused about. Couln't pick no implement one suitable library and was doing a lot of mistakes, so I had to stop it and manually research and implement one library, using the LLM only in the final phase to review errors and write small adjustments.
-In the end, the LLMs provide invaluable utility when it comes to writing the logic of functions, but only if guided with knowledge on the structure to use for thoose methods, what to actually do and what to not do.
+LLMs are good tools to research and find informations on tools and methods to solve the problems.  
+But in the current state they still need guidance to solve the tasks.  
+During the first phase I asked my LLM of choice, that was Gemini 3 Pro, to clarify the task and it was of good use, but when it came to solving the actual task it failed to provide functioning code. Messing with non-existing libraries, trying out unefficient methods and writing a lot of unuseful code were just some of the problems I faced.  
+For the code I switched to Claude Haiku 4.5 and it proved more efficient with both code and questions on the code, but the issues were basically the same as Gemini's.  
+I used them to first clarify what was the task and the various methods to solve them, then I investigated what was the most efficient and made the LLM implement it. I checked everything the LLM wrote, fixing all the mistakes, manually replacing code where it was using strange looking function, and checking after every prompt if the code was working well and doing what it was supposed to do.  
+One notable example was the LoRa communication, that the LLM were very confused about. Couln't pick no implement one suitable library and was doing a lot of mistakes, so I had to stop it and manually research and implement one library, using the LLM only in the final phase to review errors and write small adjustments.  
+In the end, the LLMs provide invaluable utility when it comes to writing the logic of functions, but only if guided with knowledge on the structure to use for thoose methods, what to actually do and what to not do.  
 
 ## Setup Guide
-The final setup for this project consist only of the files on this repo.
+The final setup for this project consist only of the files on this repo.  
 The solution is split across different .cpp files to simplify reading the various functions.
 
 The hardware things needed to run the project that are:
