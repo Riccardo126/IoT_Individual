@@ -13,7 +13,7 @@
 extern const bool ENABLE_STRESS_TEST = false;  // Toggle this to enable/disable stress test
 extern const bool ENABLE_FFT_ANALYSIS = false;  // Toggle FFT-based optimal frequency calculation
 extern const bool ENABLE_LORA_TRANSMISSION = false;  // Toggle LoRa transmission
-extern const bool ENABLE_WIFI_TRANSMISSION = true;  // Toggle WiFi transmission
+extern const bool ENABLE_WIFI_TRANSMISSION = false;  // Toggle WiFi transmission
 
 // Queue for signal values (signal generation task -> sampling task)
 QueueHandle_t signalQueue = NULL;
@@ -39,8 +39,12 @@ void sendViaWiFi(double averageValue) {
   // Send every 100 ms (0.1 seconds)
   if (currentTime - lastWiFiSendTime >= 100) {
     if (mqttQueue != NULL) {
+      // Monitor queue usage
+      UBaseType_t spaces = uxQueueSpacesAvailable(mqttQueue);
+      Serial.print(">MQTT Queue spaces available: ");
+      Serial.println(spaces);
       if (xQueueSend(mqttQueue, &averageValue, pdMS_TO_TICKS(100)) != pdPASS) {
-        Serial.println(">WiFi: Failed to queue average value");
+        Serial.println("WiFi: Failed to queue average value");
       }
     }
     lastWiFiSendTime = currentTime;
@@ -57,8 +61,12 @@ void sendViaLoRa(double averageValue) {
   // Send every 10 seconds (10000 ms)
   if (currentTime - lastLoRaSendTime >= 10000) {
     if (loraQueue != NULL) {
-      if (xQueueSend(loraQueue, &averageValue, pdMS_TO_TICKS(100)) != pdPASS) {
-        Serial.println(">LoRa: Failed to queue average value");
+      // Monitor queue usage
+      UBaseType_t spaces = uxQueueSpacesAvailable(loraQueue);
+      Serial.print(">LoRa Queue spaces available: ");
+      Serial.println(spaces);
+      if (xQueueSend(loraQueue, &averageValue, pdMS_TO_TICKS(1000)) != pdPASS) {
+        Serial.println("LoRa: Failed to queue average value");
       }
     }
     lastLoRaSendTime = currentTime;
@@ -73,17 +81,19 @@ void samplingTask(void *parameter) {
   while (1) {
     // Receive signal value from the generation task
     if (signalQueue != NULL) {
+      // Start timing for per-window execution
+      unsigned long windowExecStart = micros();
       if (xQueueReceive(signalQueue, &signalValue, pdMS_TO_TICKS(200)) == pdPASS) {
         unsigned long currentTime = millis();
-        
+
         // Add new sample to window with timestamp
         windowSamples.push_back({currentTime, signalValue});
-        
+
         // Remove samples older than 5 seconds (moving window)
         while (!windowSamples.empty() && (currentTime - windowSamples.front().timestamp) > WINDOW_SIZE_MS) {
           windowSamples.pop_front();
         }
-        
+
         // Calculate moving window average at every sample
         if (!windowSamples.empty()) {
           double sum = 0.0;
@@ -91,23 +101,29 @@ void samplingTask(void *parameter) {
             sum += sample.value;
           }
           windowAverage = sum / windowSamples.size();
-          
+
           // Only print signal during normal mode (not during stress test)
           if (!ENABLE_STRESS_TEST) {
             Serial.print(">signal:");
             Serial.println(signalValue);
           }
-          
+
           Serial.print(">WINDOW_AVERAGE: ");
           Serial.println(windowAverage, 6);
-          
+
           // Send the average value via WiFi and LoRa
           sendViaWiFi(windowAverage);
           sendViaLoRa(windowAverage);
+
+          // End timing after all processing and transmission
+          unsigned long windowExecEnd = micros();
+          unsigned long windowExecTime = windowExecEnd - windowExecStart;
+          Serial.print(">WINDOW_EXECUTION_TIME_US: ");
+          Serial.println(windowExecTime);
         }
-        
+
         sampleCount++;
-        
+
         if (ENABLE_STRESS_TEST && !stressTestComplete) {
           // Calculate expected vs actual samples for the current interval
           unsigned long expectedSamples = (STATUS_INTERVAL * 1000) / currentIntervalUs;  // Expected samples in STATUS_INTERVAL
@@ -145,11 +161,23 @@ void setup() {
   
   // Perform FFT analysis to find optimal sampling frequency (optional)
   if (ENABLE_FFT_ANALYSIS) {
-    Serial.println("\n=== FFT ANALYSIS ===");
+    Serial.println("\n=== FFT ANALYSIS & ADAPTIVE SAMPLING ===");
+    // Set initial oversampling rate (e.g., 4x Nyquist or a high value)
+    #ifdef SAMPLE_RATE
+      #undef SAMPLE_RATE
+    #endif
+    #define SAMPLE_RATE 4000  // Example: start with 4 kHz
+    Serial.println("Initial oversampling rate set to: " + String(SAMPLE_RATE) + " Hz");
+
+    // Sample for 5 seconds at this rate
+    delay(5000);
+
+    // Apply FFT-based adaptive sampling
+    Serial.println("Applying adaptive sampling based on FFT analysis...");
     applyOptimalSamplingFrequency();
-    Serial.println("=== End FFT ===\n");
+    Serial.println("=== End FFT/Adaptive Sampling ===\n");
   } else {
-    Serial.println(">FFT Analysis disabled. Using default sampling rate: " + String(SAMPLE_RATE) + " Hz");
+    Serial.println("FFT Analysis disabled. Using default sampling rate: " + String(SAMPLE_RATE) + " Hz");
   }
   
   Serial.println("Heltec ESP32 LoRa v3");

@@ -1,6 +1,6 @@
 # IoT-Individual-Assignment
-Individual Assignment for Internet of Things - Algorithms and Services course 2026
-Author: Riccardo Passacantando
+Individual Assignment for Internet of Things - Algorithms and Services course 2026  
+Author: Riccardo Passacantando  
 
 ## The assignment
 The requirements needed to solve the assignment are:
@@ -22,9 +22,22 @@ The requirements needed to solve the assignment are:
 <img src="images/photo2.jpg" width="250">
 </div>
 
-After failing multiple times at generating a signal through audio cable or with DAC and losing a lot of precious time, I resorted to simulating the input signal with the firmware of my Heltec board.
-In exchange I will do more precise tests on it.
-The generated input signal is composed of two sine waves with different frequencies of the form SUM(a_k*sin(f_k)) and it's the following:
+After failing multiple times at generating a signal through audio cable or with DAC and losing a lot of precious time, I resorted to simulating the input signal with the firmware of my Heltec board.  
+I didn't manage to generate a clean signal that I could analyze and instead I was getting, in some cases only noise, in others a very noisy signal.
+
+I tried 5 approaches:
+- UART trough pc usb cable  
+  Capped at 921,600 bps and I discovered it myself because I lost a lot of time debugging the connection before discovering the 2Mbps of the USB connection is only theorical and the device could not handle that frequency.
+- Audio jack cable from pc  
+  Up to to ~20 kHz for signal, but it was so noisy that i started questioning my sampling before noticing the problem was my cable and i didn't have another one.
+- DAC with I2C on ESP32-C3 to Heltec ADC  
+  Up to 15 kHz. Tried it for 2 hours, just to discover... that the board was fried.
+- Serial tx/rx through ESP32-C3  
+  Up to 2Mbps to be stable, but I wanted to reach higher speeds, so I left this approach for SPI.
+- SPI protocol through ESP32-C3  
+  Up to 20MHz for data, but i could not setup it due to the lack of a proper slave SPI library for the Esp32.
+
+The final simulated generated input signal is composed of two sine waves with different frequencies of the form SUM(a_k*sin(f_k)) and it's the following:  
 ```
 //2*sin(2*pi*3*t)+4*sin(2*pi*5*t)
 const SignalComponent signal1[] = {
@@ -37,8 +50,8 @@ const SignalComponent signal1[] = {
 
 ### Maximum Sampling Frequency
 The Maximum Sampling Frequency depends on the hardware and thus on the method to obtain the signal. 
-For example: if I had sampled the signal through the ADC instead of a simulated signal, the max frequency would have been different.
-In my case i generated the signal internally so i wanted to test the hardware limits on the sampling doing the following:
+For example: if I had sampled the signal through the ADC instead of a simulated signal, the max frequency would have been different.  
+In my case i generated the signal internally so I tested the hardware limits on the sampling doing the following:  
 
 1) Precalculate the signal lookup table for faster generation
 2) Initialize list of frequencies (chosen manually to avoid a very long test)
@@ -87,24 +100,29 @@ Results obtained with signal1:
 ```
 
 ### Compute aggregate function over a window
-To compute the aggregate function over a window we simulate sampling our generated signal at the optimal sampling Frequency that we just found using the FFT, or we use the predefined one if the FFT function is disables. Given that we are in discrete time to simulate the number of times that we will be sampling the signal in a time windows of 5 seconds.
+To compute the aggregate function over a window we simulate sampling our generated signal at the optimal sampling Frequency that we just found using the FFT, or we use the predefined one if the FFT function is disables. Given that we are in discrete time to simulate the number of times that we will be sampling the signal in a time windows of 5 seconds.  
 
-I had some issues doing this because the signal would get misaligned to the period and the average was oscillating around the 0 never being actually 0. I solved this forcing the windows to be aligned on the phase wrap.
+I had some issues doing this because the signal would get misaligned to the period and the average was oscillating around the 0 never being actually 0. I solved this forcing the windows to be aligned on the phase wrap.  
 
 ![Average visualization](images/average.png)
 
+So now since the phase is aligned and I filtered out the errors in the average calculation, I can generate a widow_average that is always close 0.
+
 ### Communicate the aggregate value to the nearby server with MQTT
+
+For MQTT Wifi communication I used the Wifi and PubSubClient libraries.
+I simply establish the connection and then send on the topic iot/average the average value.  
+There is another topic iot/ack to which the device is subscribed that is used to calculated the communication time as described below.  
+
+To see it in action:
 1. **Set up Moquitto**
-  - Install  and set up the parameters, then setup the parameters of the wifi the `communication.cpp` script
-2. **Install Node.js**
-  - Use then `node tools/MQTTserver/edge_server.js` to send the ACK signal through MQTT
+  - Install and set up the mosquitto.config, then setup the parameters of the wifi on the `communication.cpp` script
+2. **Visualize plotted data with Teleplot**
 
 ### Communicate the aggregate value to the cloud using LoRaWAN + TTN
 
 For LoRaWAN I used the library RadioLib that is an actual de-facto standard for the LoRaWAN communication.
 The main task sends the aggregated values on the queue and the lora task detects them and sends everything on TTN.
-
-...ot this is what it had to do, but unfortunately it doesn't work because I'm not able to join the TTN.
 
 #### Key Steps
 
@@ -142,11 +160,12 @@ To measure latency of communication simply watch the latency printed when sendin
 When a message is published to iot/average, the current time is recorded.  
 When an ACK is received on iot/ack, the latency is calculated as the difference between current time and send time, then printed out on serial.
 
-To send the ACK use `node tools/MQTTserver/edge_server.js` and see the plotted values on Teleplot.
+To send the ACK use `node tools/MQTTack/edge_server.js` and see the plotted values on Teleplot.
 
 ![Latency](images/latency.png)
 
-From here we can see the latency goes from 0.4ms to 0.8ms, but this depends on the type of connection is being used.
+From here we can see the latency ranges from 0.4ms to 1ms with occasional spikes to 1.5ms (on the plot the values are in microseconds), but this depends on the type of connection is being used.  
+In this case I was with my phome wifi router very close to the pc with mosquitto on localhost and the heltec very near, so this values are justified.
 
 ### Energy Consumption
 The circuit for measuring the energy uses this schema:
@@ -190,6 +209,10 @@ The device remains in WiFi connection state continuously but sends data only eve
 So we have 2 behavious:
 * Wifi Idle: with average consumption ~70 mA
 * Wifi Transmission: with consumption ~160 mA every 0.1 second, so it almost stays at 160 everytime
+
+![transmission](images/current_transmission.png)
+
+Here we can see how the current spikes when a packet is transmitted, but since the sampling rate of the device that reads the current is too low, we don't see a spike every 0.1s but only around 0.2s.
 
 ## Bonus section
 In all the files with name starting with *filter* there are the functions to work with task of signals and noise related to the Bonus section.

@@ -1,7 +1,6 @@
 #include "communication.h"
 #include <cstring>
 
-
 // WiFi and MQTT Configuration
 const char* wifi_ssid = "Galaxy_A52";  // WiFi SSID
 const char* wifi_password = "qnrr8104";  // WiFi password
@@ -22,13 +21,8 @@ PubSubClient mqttClient(espClient);
 
 // LoraWAN
 uint32_t  license[4] = {0x9E080891,0x9C9EE657,0xB5DB54C1,0x4A40705D};
-/* OTAA para*/
-uint8_t DevEui[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x07, 0x70, 0xF3 };
-uint8_t AppEui[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x02, 0xB1, 0x8A};
-uint8_t AppKey[] = { 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x66, 0x01 };
-
 SX1262 radio = new Module(8, 14, 12, 13);
-const uint32_t uplinkIntervalSeconds = 5UL * 60UL;
+const uint32_t uplinkIntervalSeconds = 10UL;
 #define RADIOLIB_LORAWAN_JOIN_EUI  0x70B3D57ED002B18A
 
 // the Device EUI & two keys can be generated on the TTN console 
@@ -304,51 +298,77 @@ void arrayDump(uint8_t *buffer, uint16_t len) {
   Serial.println();
 }
 
+// Esempio di controllo nel setup
 void setupLoRa() {
-  // create the LoRaWAN node
-  Serial.println(F("Initialise the radio"));
   int16_t state = radio.begin();
-  debug(state != RADIOLIB_ERR_NONE, F("Initialise radio failed"), state, true);
-
-  // Setup the OTAA session information
+  randomSeed(analogRead(17));
+  // Inizializza OTAA
   state = node.beginOTAA(joinEUI, devEUI, nwkKey, appKey);
-  debug(state != RADIOLIB_ERR_NONE, F("Initialise node failed"), state, true);
-
-  Serial.println(F("Join ('login') the LoRaWAN Network"));
-  state = node.activateOTAA();
-  debug(state != RADIOLIB_LORAWAN_NEW_SESSION, F("Join failed"), state, true);
-
-  Serial.println(F("Ready!\n"));
+  
+  // Esegui il join solo se necessario
+  Serial.println(F("Join the LoRaWAN Network"));
+  state = node.activateOTAA(); 
+  
+  if(state == RADIOLIB_LORAWAN_NEW_SESSION) {
+    Serial.println(F("Join successful!"));
+  } else {
+    // Se ricevi RADIOLIB_ERR_JOIN_NONCE_INVALID (-102), 
+    // significa che il nonce è duplicato
+    debug(true, F("Join failed"), state, false);
+  }
 }
-
 // FreeRTOS task for LoRaWAN state machine
 void loraWanTask(void *parameter)
 {
   double averageValue = 0.0;
-  Serial.println(F("Sending uplink"));
+  static bool isJoined = false;
 
-  if (xQueueReceive(loraQueue, &averageValue, pdMS_TO_TICKS(100)) == pdPASS)
-  {
-    // Build payload byte array
-    uint8_t uplinkPayload[] = { (uint8_t)(averageValue) };
-    
-    // Perform an uplink
-    int16_t state = node.sendReceive(uplinkPayload, sizeof(uplinkPayload));    
-    debug(state < RADIOLIB_ERR_NONE, F("Error in sendReceive"), state, false);
+  while (1) {
+    Serial.println(F("LoRaWAN Task: Waiting for data to send..."));
+    if (xQueueReceive(loraQueue, &averageValue, pdMS_TO_TICKS(100)) == pdPASS) {
+      // Check join status before sending
+      if (!isJoined) {
+        Serial.println(F("LoRaWAN not joined. Attempting join..."));
+        int16_t joinState = node.activateOTAA();
+        if (joinState == RADIOLIB_LORAWAN_NEW_SESSION) {
+          Serial.println(F("Join successful!"));
+          isJoined = true;
+        } else {
+          debug(true, F("Join failed, skipping send"), joinState, false);
+          // Wait before retrying join
+          delay(10000);
+          continue;
+        }
+      }
 
-    // Check if a downlink was received 
-    // (state 0 = no downlink, state 1/2 = downlink in window Rx1/Rx2)
-    if(state > 0) {
-      Serial.println(F("Received a downlink"));
-    } else {
-      Serial.println(F("No downlink received"));
+      Serial.println(F("Sending uplink"));
+      // Build payload byte array
+      uint8_t uplinkPayload[] = { (uint8_t)(averageValue) };
+
+      // Perform an uplink
+      int16_t state = node.sendReceive(uplinkPayload, sizeof(uplinkPayload));
+      debug(state < RADIOLIB_ERR_NONE, F("Error in sendReceive"), state, false);
+
+      if (state == RADIOLIB_ERR_NETWORK_NOT_JOINED) {
+        Serial.println(F("Lost network join, will rejoin next time."));
+        isJoined = false;
+        // Attempt to rejoin on next loop
+      }
+
+      // Check if a downlink was received
+      // (state 0 = no downlink, state 1/2 = downlink in window Rx1/Rx2)
+      if (state > 0) {
+        Serial.println(F("Received a downlink"));
+      } else {
+        Serial.println(F("No downlink received"));
+      }
+
+      Serial.print(F("Next uplink in "));
+      Serial.print(uplinkIntervalSeconds);
+      Serial.println(F(" seconds\n"));
+
+      // Wait until next uplink - observing legal & TTN FUP constraints
+      delay(uplinkIntervalSeconds * 1000UL);  // delay needs milli-seconds
     }
-
-    Serial.print(F("Next uplink in "));
-    Serial.print(uplinkIntervalSeconds);
-    Serial.println(F(" seconds\n"));
-    
-    // Wait until next uplink - observing legal & TTN FUP constraints
-    delay(uplinkIntervalSeconds * 1000UL);  // delay needs milli-seconds
   }
 }
