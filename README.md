@@ -17,9 +17,9 @@ The requirements needed to solve the assignment are:
 
 ### Input Signal
 
-![Components](images/photo1.png)
-![Connected components](images/photo3.png)
-![SPI](images/photo2.png)
+![Components](images\photo1.jpg)
+![Connected components](images\photo3.jpg)
+![SPI](images\photo2.jpg)
 
 After failing multiple times at generating a signal through audio cable or with DAC and losing a lot of precious time, I resorted to simulating the input signal with the firmware of my Heltec board.
 In exchange I will do more precise tests on it.
@@ -89,7 +89,7 @@ To compute the aggregate function over a window we simulate sampling our generat
 
 I had some issues doing this because the signal would get misaligned to the period and the average was oscillating around the 0 never being actually 0. I solved this forcing the windows to be aligned on the phase wrap.
 
-![Average visualization](images/average.png)
+![Average visualization](images\average.png)
 
 ### Communicate the aggregate value to the nearby server with MQTT
 1. **Set up Moquitto**
@@ -137,7 +137,7 @@ When an ACK is received on iot/ack, the latency is calculated as the difference 
 
 To send the ACK use `node tools/MQTTserver/edge_server.js` and see the plotted values on Teleplot.
 
-![Latency](images/latency.png)
+![Latency](images\latency.png)
 
 From here we can see the latency goes from 0.4ms to 0.8ms, but this depends on the type of connection is being used.
 
@@ -167,7 +167,7 @@ Depending on the tasks the board has to do, it has different consumptions. I wil
 
 The FreeRTOS tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless or LoRa transceiver is only enabled during transmission.
 
-![Energy](images/current.png)
+![Energy](images\current.png)
 
 Here we have a plot of the current usage during normal operation without any data sending.
 
@@ -184,7 +184,7 @@ The duration of each LoRa transmission (time-on-air) is calculated based on the 
 
 We can then estimate the time using the ![TTN LoRaWAN airtime calculator](https://www.thethingsnetwork.org/airtime-calculator/).
 
-![TTA](images/tta.png)
+![TTA](images\tta.png)
 
 #### Consumption with WiFi
 The device remains in WiFi connection state continuously but sends data only every 5 seconds.
