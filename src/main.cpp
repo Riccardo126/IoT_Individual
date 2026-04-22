@@ -13,7 +13,7 @@
 extern const bool ENABLE_STRESS_TEST = false;  // Toggle this to enable/disable stress test
 extern const bool ENABLE_FFT_ANALYSIS = false;  // Toggle FFT-based optimal frequency calculation
 extern const bool ENABLE_LORA_TRANSMISSION = false;  // Toggle LoRa transmission
-extern const bool ENABLE_WIFI_TRANSMISSION = false;  // Toggle WiFi transmission
+extern const bool ENABLE_WIFI_TRANSMISSION = true;  // Toggle WiFi transmission
 
 // Queue for signal values (signal generation task -> sampling task)
 QueueHandle_t signalQueue = NULL;
@@ -202,7 +202,7 @@ void setup() {
       0                      // Core ID (0 for core 0)
     );
   }
-  
+
   if (ENABLE_WIFI_TRANSMISSION) {
     // Create WiFi/MQTT transmission task with priority 1, running on core 0
     xTaskCreatePinnedToCore(

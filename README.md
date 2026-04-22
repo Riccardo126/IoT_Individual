@@ -16,10 +16,9 @@ The requirements needed to solve the assignment are:
 - Transmit the result to the cloud server via LoRaWAN + TTN
 
 ### Input Signal
-
-![Components](\images\photo1.jpg)
-![Connected components](\images\photo3.jpg)
-![SPI](\images\photo2.jpg)
+<img src="images\photo1.jpg" width="250">
+<img src="images\photo3.jpg" width="250">
+<img src="images\photo2.jpg" width="250">
 
 After failing multiple times at generating a signal through audio cable or with DAC and losing a lot of precious time, I resorted to simulating the input signal with the firmware of my Heltec board.
 In exchange I will do more precise tests on it.
@@ -31,6 +30,8 @@ const SignalComponent signal1[] = {
   {4.0, 5.0}
 }; 
 ```
+
+![Signal](images/signal.png)
 
 ### Maximum Sampling Frequency
 The Maximum Sampling Frequency depends on the hardware and thus on the method to obtain the signal. 
@@ -89,7 +90,7 @@ To compute the aggregate function over a window we simulate sampling our generat
 
 I had some issues doing this because the signal would get misaligned to the period and the average was oscillating around the 0 never being actually 0. I solved this forcing the windows to be aligned on the phase wrap.
 
-![Average visualization](\images\average.png)
+![Average visualization](images\average.png)
 
 ### Communicate the aggregate value to the nearby server with MQTT
 1. **Set up Moquitto**
@@ -137,7 +138,7 @@ When an ACK is received on iot/ack, the latency is calculated as the difference 
 
 To send the ACK use `node tools/MQTTserver/edge_server.js` and see the plotted values on Teleplot.
 
-![Latency](\images\latency.png)
+![Latency](images\latency.png)
 
 From here we can see the latency goes from 0.4ms to 0.8ms, but this depends on the type of connection is being used.
 
@@ -167,38 +168,39 @@ Depending on the tasks the board has to do, it has different consumptions. I wil
 
 The FreeRTOS tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless or LoRa transceiver is only enabled during transmission.
 
-![Energy](\images\current.png)
+![Energy](images\current.png)
 
 Here we have a plot of the current usage during normal operation without any data sending.
 
 
-
 #### Consumption of LoRa
-Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most xxx mA during transmission.
+Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most 120 mA during transmission.
 The duration of each LoRa transmission (time-on-air) is calculated based on the LoRaWAN physical layer settings, i set the datarate to 4 obtaining the following parameters:
 
-**Datarate 3 in EU868 region:**
+**Datarate 4 in EU868 region:**
 * Spreading Factor: SF8
 * Bandwidth: 125 kHz
 * Bit rate: ~3,125 bits/s
 
-We can then estimate the time using the ![TTN LoRaWAN airtime calculator](https://www.thethingsnetwork.org/airtime-calculator/).
+We can then estimate the time using the [TTN LoRaWAN airtime calculator](https://www.thethingsnetwork.org/airtime-calculator/).
 
-![TTA](\images\tta.png)
+![TTA](images\tta.png)
+
+Given the behaviour described above we can estimate the power consumption during the LoRa transmission.
+
+![lora_consumption](images\estimated_consumption.png)
 
 #### Consumption with WiFi
 The device remains in WiFi connection state continuously but sends data only every 5 seconds.
 So we have 2 behavious:
-* Wifi Idle: with average consumption ~60 mA
-* Wifi Transmission: with consumption ~180 mA every 0.1 second 
-
+* Wifi Idle: with average consumption ~70 mA
+* Wifi Transmission: with consumption ~160 mA every 0.1 second, so it almost stays at 160 everytime
 
 ## Bonus section
 In all the files with name starting with *filter* there are the functions to work with task of signals and noise related to the Bonus section.
 
 ### Different signals and sampling
 By changing on the function call precalculateSignal the argument with signal1 signal2 or signal3 you can use different signals, remember to update the number of components of the signal if you use signal3.
-Plus if you want to add a noise component just change False, to True on the arguments of that function.
 
 There are 3 signals predefined:
 ```
@@ -218,15 +220,6 @@ const SignalComponent signal3[] = {
   {1.0, 15.0}
 };
 ```
-
-Narrow-band signals (signal1: 3–5 Hz) are adaptive sampling's sweet spot. FFT identifies the peak at 5 Hz and with Nyquist you samplie at 10 Hz. Over-sampling at, let's say, 100 Hz wastes 10× the resources. 
-
-Spread-spectrum signals (signal2: 1–10 Hz) introduce risk. The highest frequency component (10 Hz) demands ≥20 Hz sampling. Adaptive works fine if FFT reliably detects it, but there's a problem: under-sample by just 5 Hz and aliasing corrupts everything. Over-sampling prevents this disaster.
-
-Wideband signals (signal3: 2–15 Hz) are instead very difficult for adaptive sampling. At 30 Hz minimum sampling, we no longer save much versus conservative over-sampling. Worse, if lower-frequency components mask the 15 Hz peak in FFT, we could under-sample and miss it. 
-
-Summing up: Adaptive sampling saves power and bandwidth when signal content is known and stable. On the other hand over-sampling trades efficiency for robustness, it costs more resources but can handle unknown or time-varying signals without recalibration. For the case of my setup with static signals (since they are precomputed), adaptive wins.
-With real sensor data that changes over time, hybrid approaches work best: adaptive base rate + periodic FFT refresh + safety margin.
 
 ## About LLMs
 LLMs are good tools to research and find informations on tools and methods to solve the problems.
@@ -255,4 +248,4 @@ So to run correctly the project:
 * Connect the board to your pc and upload the project.
 * If you want to see the different parts of the project in action just change the **ENABLE_** variables on the top of ```main.cpp``` before uploading the program on the board.
 * For almost every part, using the VS Code extension Teleplot you can see the graph of the values being plotted
-* run the python scripts on /tools folder to test MQTT, LoRa, power consumption
+* run the python scripts on /tools folder to test MQTT.
