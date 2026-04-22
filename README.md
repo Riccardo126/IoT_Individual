@@ -16,9 +16,11 @@ The requirements needed to solve the assignment are:
 - Transmit the result to the cloud server via LoRaWAN + TTN
 
 ### Input Signal
+<div style="display: flex;">
 <img src="images/photo1.jpg" width="250">
 <img src="images/photo3.jpg" width="250">
 <img src="images/photo2.jpg" width="250">
+</div>
 
 After failing multiple times at generating a signal through audio cable or with DAC and losing a lot of precious time, I resorted to simulating the input signal with the firmware of my Heltec board.
 In exchange I will do more precise tests on it.
