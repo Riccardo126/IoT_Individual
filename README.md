@@ -99,8 +99,10 @@ I had some issues doing this because the signal would get misaligned to the peri
 
 ### Communicate the aggregate value to the cloud using LoRaWAN + TTN
 
-For LoRaWAN I used the library ESP32_LoRaWAN that is an extraced version of only the LoRa module of the bigger Heltec ESP32 package that has many more functions.
+For LoRaWAN I used the library RadioLib that is an actual de-facto standard for the LoRaWAN communication.
 The main task sends the aggregated values on the queue and the lora task detects them and sends everything on TTN.
+
+...ot this is what it had to do, but unfortunately it doesn't work because I'm not able to join the TTN.
 
 #### Key Steps
 
@@ -133,7 +135,11 @@ To measure latency of communication simply watch the latency printed when sendin
 When a message is published to iot/average, the current time is recorded.
 When an ACK is received on iot/ack, the latency is calculated as the difference between current time and send time, then printed out on serial.
 
-To send the ACK use `node tools/MQTTserver/edge_server.js` and collect the.
+To send the ACK use `node tools/MQTTserver/edge_server.js` and see the plotted values on Teleplot.
+
+![Latency](images/latency.png)
+
+From here we can see the latency goes from 0.4ms to 0.8ms, but this depends on the type of connection is being used.
 
 ### Energy Consumption
 The circuit for measuring the energy uses this schema:
@@ -161,6 +167,12 @@ Depending on the tasks the board has to do, it has different consumptions. I wil
 
 The FreeRTOS tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless or LoRa transceiver is only enabled during transmission.
 
+![Energy](images/current.png)
+
+Here we have a plot of the current usage during normal operation without any data sending.
+
+
+
 #### Consumption of LoRa
 Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most xxx mA during transmission.
 The duration of each LoRa transmission (time-on-air) is calculated based on the LoRaWAN physical layer settings, i set the datarate to 4 obtaining the following parameters:
@@ -177,8 +189,9 @@ We can then estimate the time using the ![TTN LoRaWAN airtime calculator](https:
 #### Consumption with WiFi
 The device remains in WiFi connection state continuously but sends data only every 5 seconds.
 So we have 2 behavious:
-* Wifi Idle: with average consumption ~xxx mA
-* Wifi Transmission: with consumption ~yyy mA every 1 second 
+* Wifi Idle: with average consumption ~60 mA
+* Wifi Transmission: with consumption ~180 mA every 0.1 second 
+
 
 ## Bonus section
 In all the files with name starting with *filter* there are the functions to work with task of signals and noise related to the Bonus section.
