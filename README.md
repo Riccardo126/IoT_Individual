@@ -126,14 +126,14 @@ The main task sends the aggregated values on the queue and the lora task detects
 
 ### Measure volume of data transmitted
 MQTT
-Payload: ~13 bytes per message (e.g., "123.456789")
-Transmission rate: Every 100ms
-Volume: ~130 bytes/second or ~468 KB/hour
+Payload: 13 (payload) + 11 (topic) + 5 (MQTT header) + 54 (network overhead) ≈ 83 bytes/message
+Transmission rate: Every 100ms  
+Volume: ~830 bytes/second  
 
 LoRa
-Payload: Single uint8_t = 1 byte per message
-Transmission rate: Every 10 seconds
-Volume: ~0.1 bytes/second or ~360 bytes/hour
+Payload: 1 byte (message) + 13 (LoRa Header)
+Transmission rate: Every 10 seconds  
+Volume: 1.4 bytes/second ≈ 5 KB/hour
 
 ### Measure Latency
 To measure latency of communication simply watch the latency printed when sending messages with mqtt.
@@ -164,7 +164,7 @@ Here we have a plot of the current usage during normal operation without any dat
 
 
 #### Consumption of LoRa
-Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most 120 mA during transmission.
+Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average. This triggers a short spike in power usage, reaching at most 120 mA during transmission.
 The duration of each LoRa transmission (time-on-air) is calculated based on the LoRaWAN physical layer settings, i set the datarate to 4 obtaining the following parameters:
 
 **Datarate 4 in EU868 region:**
