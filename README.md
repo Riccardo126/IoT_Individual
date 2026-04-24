@@ -255,11 +255,19 @@ There are 3 signals predefined:
 
 ![signal1](images/signal.png)
 
+Here we have a simple 2 low frequency components. With oversampling we waste resources, most samples are redundant and we do not need them to represent the shape.  
+With adaptive sampling we instead save power and bandwidth.
+
 #### Signal 2
 1) Amplitude 1, frequency 1Hz
 2) Amplitude 3, frequency 10Hz
 
 ![signal2](images/signal2.png)
+
+Here we have 1 sample with low frequency and 1 sample with much higher frequency and amplitude. With oversampling we waste a lot of resources to detect the smaller frequency of 1Hz, but we instead need it to sample the 10Hz frequency.
+Adaptive sampling can have 2 issues:
+* If the FFT window is too short we may not detect the 1Hz component.
+* Since the 10Hz component is lower in amplitude it could be easily masked by noise and the FFT algorithm may select a too low sampling rate.
 
 #### Signal 3
 1) Amplitude 5, frequency 1Hz
@@ -267,6 +275,16 @@ There are 3 signals predefined:
 3) Amplitude 1, frequency 15Hz
 
 ![signal3](images/signal3.png)
+
+With 3 components, each increasing in frequency but decreasing in amplitude we have a different scenario.
+With adaptive sampling, noise is very dangerous because it can create false peaks, leading to issue in identification of real peaks and can bring to oversampling.  
+Having 3 frequencies increases the difficulty of the FFT algorithm if its resolution is too low, leading it to not recognize peaks of the different components, expecially with very different frequencies, confusing them with noise.  
+
+In general, FFT-based adaptive sampling can have issues with Noise and resolution, the more noise is present or components are in the signal, the more increases the risk of the FFT of selecting a wrong frequency for the sampling.  
+
+### Signal noise
+With the ENABLE_NOISE_ANOMALY variable we can enable the introduction of a noise component in the signal.  
+With a GaussianNoise precalculated directly in the lookup table of the signal and random anomalies injected in real time when sanding the signal over the queue.  
 
 ## About LLMs
 LLMs are good tools to research and find informations on tools and methods to solve the problems.  
