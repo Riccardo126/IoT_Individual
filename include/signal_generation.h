@@ -18,6 +18,8 @@ extern const SignalComponent signal3[];
 extern const int LOOKUP_SIZE;
 extern double signalLookup[];
 
+extern const bool ENABLE_NOISE_ANOMALY;
+
 // Sampling parameters
 extern int SAMPLE_RATE;
 extern unsigned long SAMPLE_INTERVAL_US;

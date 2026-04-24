@@ -11,7 +11,7 @@ float analyzeSignalFFT() {
   double *vImag = (double *)malloc(FFT_SIZE * sizeof(double));
   
   if (vReal == NULL || vImag == NULL) {
-    Serial.println(">FFT Error: Memory allocation failed");
+    Serial.println("FFT Error: Memory allocation failed");
     if (vReal) free(vReal);
     if (vImag) free(vImag);
     return 0.0;
@@ -45,10 +45,10 @@ float analyzeSignalFFT() {
   // Calculate frequency corresponding to the peak index
   float peakFrequency = (float)(maxIndex * FFT_SAMPLING_RATE) / FFT_SIZE;
   
-  Serial.print(">FFT Sampling Rate: ");
+  Serial.print("FFT Sampling Rate: ");
   Serial.print(FFT_SAMPLING_RATE);
   Serial.println(" Hz");
-  Serial.print(">FFT Peak Frequency: ");
+  Serial.print("FFT Peak Frequency: ");
   Serial.print(peakFrequency);
   Serial.println(" Hz");
   
@@ -65,15 +65,15 @@ void applyOptimalSamplingFrequency() {
   float peakFrequency = analyzeSignalFFT();
   
   // Calculate optimal sampling frequency using Nyquist theorem: Fs = 2 * f_max
-  float optimalSamplingFreq = 2.0 * peakFrequency;
+  float optimalSamplingFreq = 5.0 * peakFrequency;
   SAMPLE_RATE = (int)optimalSamplingFreq;
   SAMPLE_INTERVAL_US = 1000000 / SAMPLE_RATE;
   phaseIncrement = LOOKUP_SIZE / SAMPLE_RATE;  // Update phase increment when SAMPLE_RATE changes
   
-  Serial.print(">Optimal Sampling Frequency: ");
+  Serial.print("Optimal Sampling Frequency: ");
   Serial.print(optimalSamplingFreq);
   Serial.println(" Hz");
-  Serial.print(">Sampling Interval: ");
-  Serial.print(SAMPLE_INTERVAL_US);
-  Serial.println(" µs");
+  //Serial.print("Sampling Interval: ");
+  //Serial.print(SAMPLE_INTERVAL_US);
+  //Serial.println(" µs");
 }

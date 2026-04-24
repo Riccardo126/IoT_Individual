@@ -13,11 +13,12 @@
 extern const bool ENABLE_STRESS_TEST = false;  // Toggle this to enable/disable stress test
 extern const bool ENABLE_FFT_ANALYSIS = false;  // Toggle FFT-based optimal frequency calculation
 extern const bool ENABLE_LORA_TRANSMISSION = false;  // Toggle LoRa transmission
-extern const bool ENABLE_WIFI_TRANSMISSION = false;  // Toggle WiFi transmission
+extern const bool ENABLE_WIFI_TRANSMISSION = false;  // Toggle WiFi transmission - DISABLED to avoid watchdog timeout
+extern const bool ENABLE_NOISE_ANOMALY = false;  // Toggle noise anomaly detection
 
 // Queue for signal values (signal generation task -> sampling task)
 QueueHandle_t signalQueue = NULL;
-const int SIGNAL_QUEUE_SIZE = 50;  // Buffer for signal values
+const int SIGNAL_QUEUE_SIZE = 1000;  // Buffer for signal values
 
 // Window averaging parameters
 const unsigned long WINDOW_SIZE_MS = 5000;  // 5 second moving window for averaging
@@ -83,45 +84,55 @@ void samplingTask(void *parameter) {
     if (signalQueue != NULL) {
       // Start timing for per-window execution
       unsigned long windowExecStart = micros();
-      if (xQueueReceive(signalQueue, &signalValue, pdMS_TO_TICKS(200)) == pdPASS) {
-        unsigned long currentTime = millis();
+      if (xQueueReceive(signalQueue, &signalValue, pdMS_TO_TICKS(100)) == pdPASS) {
+        
+        // Only print signal and average during normal mode (not during stress test)
+        if (!ENABLE_STRESS_TEST && SAMPLE_RATE <= 100) { // Limit calculation to lower sampling rates for hardware limits
+          unsigned long currentTime = millis();
 
-        // Add new sample to window with timestamp
-        windowSamples.push_back({currentTime, signalValue});
+          // Add new sample to window with timestamp
+          windowSamples.push_back({currentTime, signalValue});
 
-        // Remove samples older than 5 seconds (moving window)
-        while (!windowSamples.empty() && (currentTime - windowSamples.front().timestamp) > WINDOW_SIZE_MS) {
-          windowSamples.pop_front();
-        }
-
-        // Calculate moving window average at every sample
-        if (!windowSamples.empty()) {
-          double sum = 0.0;
-          for (const auto& sample : windowSamples) {
-            sum += sample.value;
+          // Remove samples older than 5 seconds (moving window)
+          while (!windowSamples.empty() && (currentTime - windowSamples.front().timestamp) > WINDOW_SIZE_MS) {
+            windowSamples.pop_front();
           }
-          windowAverage = sum / windowSamples.size();
 
-          // Only print signal during normal mode (not during stress test)
-          if (!ENABLE_STRESS_TEST) {
+          // Calculate moving window average at every sample
+          if (!windowSamples.empty()) {
+            double sum = 0.0;
+            for (const auto& sample : windowSamples) {
+              sum += sample.value;
+            }
+            windowAverage = sum / windowSamples.size();
+
             Serial.print(">signal:");
             Serial.println(signalValue);
+
+            Serial.print(">WINDOW_AVERAGE: ");
+            Serial.println(windowAverage, 6);
+
+            // Send the average value via WiFi and LoRa
+            sendViaWiFi(windowAverage);
+            sendViaLoRa(windowAverage);
+
+            // End timing after all processing and transmission
+            unsigned long windowExecEnd = micros();
+            unsigned long windowExecTime = windowExecEnd - windowExecStart;
+            Serial.print(">WINDOW_EXECUTION_TIME_US: ");
+            Serial.println(windowExecTime);
           }
-
-          Serial.print(">WINDOW_AVERAGE: ");
-          Serial.println(windowAverage, 6);
-
-          // Send the average value via WiFi and LoRa
-          sendViaWiFi(windowAverage);
-          sendViaLoRa(windowAverage);
-
-          // End timing after all processing and transmission
-          unsigned long windowExecEnd = micros();
-          unsigned long windowExecTime = windowExecEnd - windowExecStart;
-          Serial.print(">WINDOW_EXECUTION_TIME_US: ");
-          Serial.println(windowExecTime);
         }
-
+        else if (!ENABLE_STRESS_TEST && SAMPLE_RATE > 100) {
+          // print signal value only every 100 samples to avoid overwhelming the serial output at high sampling rates
+          static int sampleCounter = 0;
+          sampleCounter++;
+          if (sampleCounter >= 50) {
+            Serial.print(">signal:");
+            Serial.println(signalValue);
+            sampleCounter = 0;
+          }
+        }
         sampleCount++;
 
         if (ENABLE_STRESS_TEST && !stressTestComplete) {
@@ -142,7 +153,7 @@ void setup() {
   const SignalComponent *signal = signal1;  // Select which signal to generate (signal1, signal2, or signal3)
   
   // Precalculate signal lookup table
-  precalculateSignal(signal1, 2);
+  precalculateSignal(signal, 2);
   
   // Create queue for MQTT values
   mqttQueue = xQueueCreate(100, sizeof(double));
@@ -159,7 +170,7 @@ void setup() {
     setupLoRa();
   }
   
-  // Perform FFT analysis to find optimal sampling frequency (optional)
+  // If enabled Perform FFT analysis to find optimal sampling frequency
   if (ENABLE_FFT_ANALYSIS) {
     Serial.println("\n=== FFT ANALYSIS & ADAPTIVE SAMPLING ===");
     // Set initial oversampling rate (e.g., 4x Nyquist or a high value)

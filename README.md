@@ -25,26 +25,21 @@ The requirements needed to solve the assignment are:
 After failing multiple times at generating a signal through audio cable or with DAC and losing a lot of precious time, I resorted to simulating the input signal with the firmware of my Heltec board.  
 I didn't manage to generate a clean signal that I could analyze and instead I was getting, in some cases only noise, in others a very noisy signal.
 
-I tried 5 approaches:
+I tried 5 approaches(not in this order):
 - UART trough pc usb cable  
   Capped at 921,600 bps and I discovered it myself because I lost a lot of time debugging the connection before discovering the 2Mbps of the USB connection is only theorical and the device could not handle that frequency.
 - Audio jack cable from pc  
   Up to to ~20 kHz for signal, but it was so noisy that i started questioning my sampling before noticing the problem was my cable and i didn't have another one.
-- DAC with I2C on ESP32-C3 to Heltec ADC  
-  Up to 15 kHz. Tried it for 2 hours, just to discover... that the board was fried.
 - Serial tx/rx through ESP32-C3  
   Up to 2Mbps to be stable, but I wanted to reach higher speeds, so I left this approach for SPI.
 - SPI protocol through ESP32-C3  
   Up to 20MHz for data, but i could not setup it due to the lack of a proper slave SPI library for the Esp32.
+- DAC with I2C on ESP32-C3 to Heltec ADC  
+  Up to 15 kHz. Tried it for hours with different methods, connections, and boards, just to discover... that the board was fried.
 
-The final simulated generated input signal is composed of two sine waves with different frequencies of the form SUM(a_k*sin(f_k)) and it's the following:  
-```
-//2*sin(2*pi*3*t)+4*sin(2*pi*5*t)
-const SignalComponent signal1[] = {
-  {2.0, 3.0},
-  {4.0, 5.0}
-}; 
-```
+<img src="images/rip_mcp.jpg" width="200">  
+
+The final simulated generated input signal is composed of two sine waves with different frequencies of the form SUM(a_k*sin(f_k)) and the example one is composed as 2*sin(2*pi*3*t)+4*sin(2*pi*5*t)
 
 ![Signal](images/signal.png)
 
@@ -73,6 +68,8 @@ The values found were:
 === End of stress test ===
 ```
 
+This is the frequency that we can achieve with our hardware without any calculation in between.
+
 ### Identify optimal sampling frequency
 The ArduinoFFT library breaks the signal into frequency bins, each bin represents a frequency range, and its magnitude shows how strong that frequency is in the signal.  
 I chose 512 samples for frequency resolution. The FFT divides sampling rate by the number of samples to calculate bin spacing: Sampling Rate ÷ Number of Samples.
@@ -86,16 +83,18 @@ So to calculate the optimal sampling frequency:
 1) Pull 512 samples of the precalculated signal
 2) Use FFT to convert time samples to frequency samples
 3) Find and extract the peak frequency component
-4) Use Nyquist theorem to find optimal sampling frequency Fs = 2 × f_max
-5) Set SAMPLE_RATE and SAMPLE_INTERVAL_US
+4) Use Fs = 5 × f_max to obtain the optimal sampling frequency
+5) Set new SAMPLE_RATE (frequency)
 6) Print optimal sampling frequency obtained
+
+Why about the Nyquist? The theorem finds the MINIMUM required frequence and allows us to reconstruct the original signal, but it fails in capturing the details of the signal, potentially cutting out anomalies and noise.  
+Sampling at 5x the maximum peak we can better capture every variation of the signal in near bands.
 
 Results obtained with signal1:
 ```
 === FFT ANALYSIS ===
->FFT Peak Frequency: 5.00 Hz
->Optimal Sampling Frequency: 10.00 Hz
->Sampling Interval: 100000 µs
+FFT Peak Frequency: 5.00 Hz
+Optimal Sampling Frequency: 25.00 Hz
 === End FFT ===
 ```
 
@@ -106,7 +105,7 @@ I had some issues doing this because the signal would get misaligned to the peri
 
 ![Average visualization](images/average.png)
 
-So now since the phase is aligned and I filtered out the errors in the average calculation, I can generate a widow_average that is always close 0.
+So now since the phase is aligned and I filtered out the errors in the average calculation, I can generate a widow_average that is always close to 0 (except for calculation errors).
 
 ### Communicate the aggregate value to the nearby server with MQTT
 
@@ -122,7 +121,7 @@ To see it in action:
 ### Communicate the aggregate value to the cloud using LoRaWAN + TTN
 
 For LoRaWAN I used the library RadioLib that is an actual de-facto standard for the LoRaWAN communication.
-The main task sends the aggregated values on the queue and the lora task detects them and sends everything on TTN.
+The main task sends the aggregated values on a loraQueue, then the lora task detect the values on the queue, joins the TTN and sends everything on TTN every 10 seconds.
 
 #### Key Steps
 
@@ -138,7 +137,7 @@ The main task sends the aggregated values on the queue and the lora task detects
    - Store `DevEUI`, `AppEUI`, and `AppKey` in `communication.cpp` like in: [secrets-example.h](IoT_Individual/src/communication.cpp)
 3. **Join the Network and Transmit**  
    - On boot, the device sends a join request to TTN.  
-   - Once joined, it transmits the **rolling average** value periodically, encoded as a **4-byte float**.  
+   - Once joined, it transmits the **average** value periodically, encoded as a **4-byte float**.  
    - Transmission occurs within a FreeRTOS task to ensure proper timing and multitasking.
 4. **View messages on the TTN interface**
 
@@ -153,14 +152,19 @@ Volume: ~830 bytes/second
 LoRa
 Payload: 1 byte (message) + 13 (LoRa Header)  
 Transmission rate: Every 10 seconds  
-Volume: 1.4 bytes/second ≈ 5 KB/hour  
+Volume: ~1.4 bytes/second ≈ 5 KB/hour  
+
+### Measure Per-Window execution time
+With a simple time recording before the window calculation and after the calculation we can see how much time it takes to the cpu to process the windowing. I found out that, in the way i coded the windowing, it takes around 20ms (or ~19950 us) limiting us in the sampling rate, we will see it later in the oversampling section.  
+
+![Windowing](images/windowing.png)
 
 ### Measure Latency
-To measure latency of communication simply watch the latency printed when sending messages with mqtt.  
-When a message is published to iot/average, the current time is recorded.  
-When an ACK is received on iot/ack, the latency is calculated as the difference between current time and send time, then printed out on serial.
+When a message is published to iot/average the current time is recorded.  
+The module is then subscribed on the same topic, so when he sends the message awaits for it to come back and records the time.  
+The latency is then calculated as the difference between current time and send time, then printed out on serial.
 
-To send the ACK use `node tools/MQTTack/edge_server.js` and see the plotted values on Teleplot.
+To measure latency of communication simply watch the latency printed when sending messages with mqtt, or watch the plotted values on Teleplot.  
 
 ![Latency](images/latency.png)
 
@@ -168,7 +172,8 @@ From here we can see the latency ranges from 0.4ms to 1ms with occasional spikes
 In this case I was with my phome wifi router very close to the pc with mosquitto on localhost and the heltec very near, so this values are justified.
 
 ### Energy Consumption
-The circuit for measuring the energy uses this schema:
+The circuit for measuring the energy uses an INA219 and an ESP32-C3 Supermini as measuring device.
+The current flows into the ESP32-C3 through the pc usb connection, then goes from 3.3V to the INA, and 5V to power the Heltec.  Ground is shared between all devices.
 
 ![energy](images/energy.jpg)
 
@@ -181,8 +186,15 @@ The FreeRTOS tasks are always active, resulting in a steady power draw from the 
 
 ![Energy](images/current.png)
 
-Here we have a plot of the current usage during normal operation without any data sending.
+Initially I had this plot of the current usage during normal operation without any data sending.  
 
+![Spikes](images/spikes.png)
+
+Increasing the sampling frequency of the ESP32-C3 reading the INA, i found out the signal generator was generating too fast and would fill the signalQueue too fast, and 100ms, like we see on the graphs, il the amount of time the QueueSend instruction awaits for the queue to have space available. This caused that spike, that I have then solved by checking the queue status before enqueueing values.
+
+![Nospikes](images/nospikes.png)
+
+Checking now the consumption graph of the signal generation we have a very consistent plot of ~52.4mA.
 
 #### Consumption of LoRa
 Every 10 seconds, the device transmits a small payload over LoRa containing the computed rolling average. This triggers a short spike in power usage, reaching at most 120 mA during transmission.  
@@ -207,37 +219,54 @@ Given the behaviour described above we can estimate the power consumption during
 #### Consumption with WiFi
 The device remains in WiFi connection state continuously but sends data only every 5 seconds.  
 So we have 2 behavious:
-* Wifi Idle: with average consumption ~70 mA
-* Wifi Transmission: with consumption ~160 mA every 0.1 second, so it almost stays at 160 everytime
+* Wifi Idle: with average consumption ~135 mA
+* Wifi Transmission: with consumption peak of ~155/160 mA every 0.1 second
 
 ![transmission](images/current_transmission.png)
 
-Here we can see how the current spikes when a packet is transmitted, but since the sampling rate of the device that reads the current is too low, we don't see a spike every 0.1s but only around 0.2s.
+Here we can see how the current spikes as expected when a packet is transmitted every 0.1s.
+
+#### Oversampling Consumption
+For oversampling we use a frequency of 1kHz that is way more than what we need.  
+I had an initial issue: as we saw on the stress test the board can handle until 65kHz, but that value is without any calculation on the signal, not even a print on serial, that can slow the process down.  
+So the board was crashing when sampling at 1kHz, I solved temporarily commenting out all the calculations.  
+
+We see here our signal that has an average consumption of ~74mA.  
+
+![Oversampling](images/oversampling%20current.png)
+
+#### Adaptive Sampling Consumption
+We can see here that when using an optimal frequency of 50Hz the average consumption decreases to ~72mA with little spikes due to the queue management of the system.  
+The original signal generation on its Task is still occurring at 10kHz, so the change of consumption from the oversampling is not significant, but still very visible here.  
+
+![Adaptive](images/adaptive%20current.png)
 
 ## Bonus section
-In all the files with name starting with *filter* there are the functions to work with task of signals and noise related to the Bonus section.
 
 ### Different signals and sampling
-By changing on the function call precalculateSignal the argument with signal1 signal2 or signal3 you can use different signals, remember to update the number of components of the signal if you use signal3.
+By changing on the function call precalculateSignal the argument with signal1 signal2 or signal3 you can use different signals, remember to update the number of components of the signal if you use signal3.  
+There are small visualization artifacts due to the plotter, but the signal is correct since the window average was 0 at the time of recording.  
 
 There are 3 signals predefined:
-```
-const SignalComponent signal1[] = {
-  {2.0, 3.0},
-  {4.0, 5.0}
-};
 
-const SignalComponent signal2[] = {
-  {1.0, 1.0},
-  {3.0, 10.0}
-};
+#### Signal 1
+1) Amplitude 2, frequency 3Hz
+2) Amplitude 4, frequency 5Hz
 
-const SignalComponent signal3[] = {
-  {5.0, 2.0},
-  {2.0, 7.0},
-  {1.0, 15.0}
-};
-```
+![signal1](images/signal.png)
+
+#### Signal 2
+1) Amplitude 1, frequency 1Hz
+2) Amplitude 3, frequency 10Hz
+
+![signal2](images/signal2.png)
+
+#### Signal 3
+1) Amplitude 5, frequency 1Hz
+2) Amplitude 2, frequency 7Hz
+3) Amplitude 1, frequency 15Hz
+
+![signal3](images/signal3.png)
 
 ## About LLMs
 LLMs are good tools to research and find informations on tools and methods to solve the problems.  

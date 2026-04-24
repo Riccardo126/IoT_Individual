@@ -8,12 +8,11 @@ const char* mqtt_broker = "10.61.217.62";  // Broker address (localhost)
 int mqtt_port = 1883;                   // Default  port
 const char* mqtt_username = "";         // MQTT username (empty if not required)
 const char* mqtt_password = "";         // MQTT password (empty if not required)
-const char* mqtt_topic = "iot/average";
-const char* mqtt_ack_topic = "iot/ack";
+const char* mqtt_topic = "iot/average";  // Topic to publish average values
 
 // Latency measurement variables
 static unsigned long lastSendTime = 0;
-static bool waitingForAck = false;
+static bool waitingForMsg = false;
 
 // WiFi and MQTT clients
 WiFiClient espClient;
@@ -55,21 +54,21 @@ QueueHandle_t loraQueue = NULL;
 // MQTT callback function for handling incoming messages
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Check if the message is on the ACK topic
-  if (strcmp(topic, mqtt_ack_topic) == 0) {
-    if (waitingForAck) {
+  if (strcmp(topic, mqtt_topic) == 0) {
+    if (waitingForMsg) {
       unsigned long currentTime = micros();
       unsigned long latency = currentTime - lastSendTime;
       Serial.print(">MQTT_Latency: ");
       Serial.print(latency);
       Serial.println(" µs");
-      waitingForAck = false;
+      waitingForMsg = false;
     }
   }
 }
 
 // WiFi setup function
 void setupWiFi() {
-  Serial.print(">Connecting to WiFi: ");
+  Serial.print("Connecting to WiFi: ");
   Serial.println(wifi_ssid);
   
   WiFi.begin(wifi_ssid, wifi_password);
@@ -82,11 +81,11 @@ void setupWiFi() {
   }
   
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n>WiFi connected!");
-    Serial.print(">IP address: ");
+    Serial.println("\nWiFi connected!");
+    Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
   } else {
-    Serial.println("\n>WiFi connection failed!");
+    Serial.println("\nWiFi connection failed!");
   }
 }
 
@@ -94,7 +93,7 @@ void setupWiFi() {
 void mqttReconnect() {
   int attempts = 0;
   while (!mqttClient.connected() && attempts < 5) {
-    Serial.print(">Connecting to MQTT broker: ");
+    Serial.print("Connecting to MQTT broker: ");
     Serial.println(mqtt_broker);
     
     // Connect with credentials if provided
@@ -106,10 +105,10 @@ void mqttReconnect() {
     }
     
     if (connected) {
-      Serial.println(">MQTT connected!");
+      Serial.println("MQTT connected!");
       return;
     } else {
-      Serial.print(">MQTT connection failed, rc=");
+      Serial.print("MQTT connection failed, rc=");
       int rc = mqttClient.state();
       Serial.println(rc);
       // Print error descriptions
@@ -134,7 +133,7 @@ void mqttReconnect() {
 
 // Connectivity test function to verify broker is reachable
 void testPingBroker() {
-  Serial.print(">Testing connectivity to broker: ");
+  Serial.print("Testing connectivity to broker: ");
   Serial.print(mqtt_broker);
   Serial.print(":");
   Serial.println(mqtt_port);
@@ -142,13 +141,13 @@ void testPingBroker() {
   WiFiClient testClient;
   
   if (testClient.connect(mqtt_broker, mqtt_port)) {
-    Serial.println(">Broker is reachable!");
+    Serial.println("Broker is reachable!");
     testClient.stop();
   } else {
-    Serial.println(">Broker is NOT reachable - connection failed");
-    Serial.print(">WiFi status: ");
+    Serial.println("Broker is NOT reachable - connection failed");
+    Serial.print("WiFi status: ");
     Serial.println(WiFi.status());
-    Serial.print(">Local IP: ");
+    Serial.print("Local IP: ");
     Serial.println(WiFi.localIP());
   }
 }
@@ -173,9 +172,9 @@ void mqttTask(void *parameter) {
   
   // Subscribe to ACK topic
   if (mqttClient.connected()) {
-    mqttClient.subscribe(mqtt_ack_topic);
-    Serial.print(">Subscribed to topic: ");
-    Serial.println(mqtt_ack_topic);
+    mqttClient.subscribe(mqtt_topic);
+    Serial.print("Subscribed to topic: ");
+    Serial.println(mqtt_topic);
   }
   
   while (1) {
@@ -194,7 +193,7 @@ void mqttTask(void *parameter) {
           if (mqttClient.publish(mqtt_topic, payload)) {
             // Record send time for latency measurement (using microseconds)
             lastSendTime = micros();
-            waitingForAck = true;
+            waitingForMsg = true;
             Serial.print(">MQTT:");
             Serial.println(payload);
           } else {
@@ -272,7 +271,7 @@ String stateDecode(const int16_t result) {
   case RADIOLIB_ERR_SESSION_DISCARDED:
     return "RADIOLIB_ERR_SESSION_DISCARDED";
   }
-  return "See https://jgromes.github.io/RadioLib/group__status__codes.html";
+  return "Unknown error code";
 }
 
 // helper function to display any issues
